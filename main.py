@@ -9,6 +9,7 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.client.telegram import TelegramAPIServer
 from aiogram.types import Message
+from aiogram.filters import CommandStart
 import config
 
 logging.basicConfig(level=logging.INFO)
@@ -20,6 +21,19 @@ dp = Dispatcher()
 TEMP_DIR = "temp_stickers"
 os.makedirs(TEMP_DIR, exist_ok=True)
 
+# --- СТАРТ ---
+@dp.message(CommandStart())
+async def cmd_start(message: Message):
+    if message.from_user.id != config.OWNER_ID:
+        await message.reply("⛔ Доступ запрещен.")
+        return
+    await message.reply(
+        "👋 Привет! Я бот для распаковки стикеров.\n\n"
+        "📦 Просто отправь мне **ZIP-архив** с файлами `.tgs` или `.json`.\n"
+        "Я распакую их и попробую создать стикер-пак."
+    )
+
+# --- ОБРАБОТКА ZIP ---
 @dp.message(F.document)
 async def handle_zip(message: Message):
     if message.from_user.id != config.OWNER_ID:
@@ -32,6 +46,7 @@ async def handle_zip(message: Message):
 
     status_msg = await message.reply("⏳ Скачиваю и распаковываю архив...")
     
+    zip_path = None
     try:
         file = await bot.get_file(doc.file_id)
         zip_path = os.path.join(TEMP_DIR, doc.file_name)
@@ -105,7 +120,7 @@ async def handle_zip(message: Message):
         await status_msg.edit_text(f"❌ Произошла ошибка: {e}")
     
     finally:
-        if os.path.exists(zip_path):
+        if zip_path and os.path.exists(zip_path):
             os.remove(zip_path)
 
 async def main():
