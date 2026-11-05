@@ -1,0 +1,4 @@
+temp_stickers/
+__pycache__/
+*.pyc
+.env
