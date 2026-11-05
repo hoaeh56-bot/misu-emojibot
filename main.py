@@ -8,7 +8,7 @@ import shutil
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.client.telegram import TelegramAPIServer
-from aiogram.types import Message
+from aiogram.types import Message, FSInputFile # <--- ДОБАВИЛ FSInputFile
 from aiogram.filters import CommandStart
 import config
 
@@ -88,14 +88,16 @@ async def handle_zip(message: Message):
         first_sticker_path = tgs_files[0]
         
         try:
-            with open(first_sticker_path, 'rb') as f:
-                await bot.create_new_sticker_set(
-                    user_id=message.from_user.id,
-                    name=pack_name,
-                    title=f"Пак {message.from_user.first_name}",
-                    stickers=[{"sticker": f, "format": "animated", "emoji_list": ["😀"]}],
-                    sticker_format="animated"
-                )
+            # --- ИСПОЛЬЗУЕМ FSInputFile ВМЕСТО ОБЫЧНОГО OPEN ---
+            sticker_input = FSInputFile(first_sticker_path)
+            
+            await bot.create_new_sticker_set(
+                user_id=message.from_user.id,
+                name=pack_name,
+                title=f"Пак {message.from_user.first_name}",
+                stickers=[{"sticker": sticker_input, "format": "animated", "emoji_list": ["😀"]}],
+                sticker_format="animated"
+            )
             
             link = f"https://t.me/addstickers/{pack_name}"
             await status_msg.edit_text(
@@ -108,12 +110,12 @@ async def handle_zip(message: Message):
             
         except Exception as e:
             logging.error(f"Ошибка создания пака: {e}")
-            with open(first_sticker_path, 'rb') as f:
-                await message.reply_document(
-                    f, 
-                    caption=f"⚠️ Не удалось создать пак (Мисуграм не поддерживает).\n"
-                            f"Распаковано файлов: {len(tgs_files)}"
-                )
+            # Если пак не создался, отправляем файл через FSInputFile
+            await message.reply_document(
+                FSInputFile(first_sticker_path), 
+                caption=f"⚠️ Не удалось создать пак (Мисуграм не поддерживает).\n"
+                        f"Распаковано файлов: {len(tgs_files)}"
+            )
 
     except Exception as e:
         logging.error(f"Общая ошибка: {e}")
