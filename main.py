@@ -5,10 +5,11 @@ import os
 import zipfile
 import gzip
 import shutil
+from aiohttp import web
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.client.telegram import TelegramAPIServer
-from aiogram.types import Message, FSInputFile # <--- ДОБАВИЛ FSInputFile
+from aiogram.types import Message, FSInputFile
 from aiogram.filters import CommandStart
 import config
 
@@ -21,7 +22,22 @@ dp = Dispatcher()
 TEMP_DIR = "temp_stickers"
 os.makedirs(TEMP_DIR, exist_ok=True)
 
-# --- СТАРТ ---
+# --- ФЕЙКОВЫЙ ВЕБ-СЕРВЕР ДЛЯ RENDER ---
+async def handle_ping(request):
+    return web.Response(text="OK")
+
+async def start_fake_server():
+    app = web.Application()
+    app.router.add_get('/', handle_ping)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    # Render передает порт в переменной окружения PORT
+    port = int(os.environ.get("PORT", 8080))
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    logging.info(f"Фейковый веб-сервер запущен на порту {port}")
+
+# --- СТАРТ БОТА ---
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
     if message.from_user.id != config.OWNER_ID:
@@ -70,7 +86,6 @@ async def handle_zip(message: Message):
                 elif f.endswith('.json'):
                     json_files.append(os.path.join(root, f))
 
-        # Конвертация JSON в TGS
         for js in json_files:
             tgs_path = js.replace('.json', '.tgs')
             with open(js, 'rb') as f_in:
@@ -88,9 +103,7 @@ async def handle_zip(message: Message):
         first_sticker_path = tgs_files[0]
         
         try:
-            # --- ИСПОЛЬЗУЕМ FSInputFile ВМЕСТО ОБЫЧНОГО OPEN ---
             sticker_input = FSInputFile(first_sticker_path)
-            
             await bot.create_new_sticker_set(
                 user_id=message.from_user.id,
                 name=pack_name,
@@ -110,7 +123,6 @@ async def handle_zip(message: Message):
             
         except Exception as e:
             logging.error(f"Ошибка создания пака: {e}")
-            # Если пак не создался, отправляем файл через FSInputFile
             await message.reply_document(
                 FSInputFile(first_sticker_path), 
                 caption=f"⚠️ Не удалось создать пак (Мисуграм не поддерживает).\n"
@@ -127,6 +139,10 @@ async def handle_zip(message: Message):
 
 async def main():
     logging.info("🚀 Бот-распаковщик стикеров запущен.")
+    
+    # Запускаем фейковый сервер, чтобы Render не убил процесс
+    await start_fake_server()
+    
     try:
         await bot.delete_webhook(drop_pending_updates=True)
     except Exception:
